@@ -1,0 +1,12 @@
+
+*.o
+
+build/
+
+.DS_Store
+
+covidm/.Rhistory
+
+.Rhistory
+
+.Rproj.user
