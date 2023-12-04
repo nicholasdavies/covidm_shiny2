@@ -1,0 +1,12 @@
+name: covidm_shiny_beta
+title: covidm_shiny_beta
+username:
+account: cmmid-lshtm
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2608255
+bundleId: 3430681
+url: https://cmmid-lshtm.shinyapps.io/covidm_shiny_beta/
+when: 1595593550.37466
+asMultiple: FALSE
+asStatic: FALSE

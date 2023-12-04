@@ -94,14 +94,14 @@ vvaxes = function(xscale, yscale, px, py, pw, ph, xtick, xlab, ylab, title, marg
             unit_x = pa_w / as.numeric(tail(x_breaks, 1) - x_breaks[1]);
             x_to_pixel = function(x_breaks) function(x) {
                 cx = as.character(x);
-                ifelse(cx == "$U$", unit_x, ifelse(cx == "$X$", pa_x, ifelse(cx == "$W$", pa_w, pa_x + unit_x * as.numeric(x - x_breaks[1]))));
+                round(ifelse(cx == "$U$", unit_x, ifelse(cx == "$X$", pa_x, ifelse(cx == "$W$", pa_w, pa_x + unit_x * as.numeric(x - x_breaks[1])))), 2);
             }
         } else {
             x_breaks = scale;
             unit_x = pa_w / length(x_breaks);
             x_to_pixel = function(x_breaks) function(x) {
                 cx = as.character(x);
-                ifelse(cx == "$U$", unit_x, ifelse(cx == "$X$", pa_x, ifelse(cx == "$W$", pa_w, pa_x + unit_x * (match(x, x_breaks) - 0.5))));
+                round(ifelse(cx == "$U$", unit_x, ifelse(cx == "$X$", pa_x, ifelse(cx == "$W$", pa_w, pa_x + unit_x * (match(x, x_breaks) - 0.5)))), 2);
             }
         }
         return (list(x_breaks, x_to_pixel(x_breaks)))
@@ -190,6 +190,19 @@ vvline = function(x, y, style = "")
         render = function(x_to_pixel, y_to_pixel) {
             points = paste(x_to_pixel(x), y_to_pixel(y), sep = ",", collapse = " ");
             paste0('<polyline points="', points, '" class="vv_line" style="', style, '" />');
+        }
+    )
+}
+
+# Ribbon
+vvribbon = function(x, ymin, ymax, style = "")
+{
+    list(
+        xscale = list(min = min(x, na.rm = T), max = max(x, na.rm = T)),
+        yscale = list(min = min(c(0, ymin, ymax), na.rm = T), max = max(c(0, ymin, ymax), na.rm = T)),
+        render = function(x_to_pixel, y_to_pixel) {
+            points = paste(x_to_pixel(c(x, rev(x))), y_to_pixel(c(ymin, rev(ymax))), sep = ",", collapse = " ");
+            paste0('<polygon points="', points, '" class="vv_ribbon" style="', style, '" />');
         }
     )
 }
@@ -384,6 +397,7 @@ vvplot = function(width, height, ..., nrow = 1, ncol = 1, layout = NULL)
 .vv_textann { dominant-baseline:central; text-anchor:middle; font-family:Roboto,Arial,Helvetica; font-size:10px }
 .vv_legend { dominant-baseline:central; text-anchor:start; font-family:Roboto,Arial,Helvetica; font-size:10px }
 .vv_line { fill:none; stroke:black; stroke-width:0.5 }
+.vv_ribbon { fill:black; stroke:none;  }
 .vv_textshow { dominant-baseline:baseline; text-anchor:middle; font-family:Roboto,Arial,Helvetica; font-size:8px }
 </style>');
     svg_foot = '</svg>';

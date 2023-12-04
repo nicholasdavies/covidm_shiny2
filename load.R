@@ -9,10 +9,10 @@ library(shinyWidgets)
 library(rhandsontable)
 library(stringr)
 library(leaflet)
-library(NCoVUtils)
+library(covidregionaldata)
 library(yaml)
-library(qs)
-
+library(qs) # remotes::install_github("traversc/qs@legacy")
+library(rgeolocate)
 
 # COVIDM
 cm_path = "./covidm/";
@@ -83,8 +83,11 @@ burden_processes = list(
 # DATA
 
 # ECDC case data
-ecdc_cases = as.data.table(get_ecdc_cases());
-ecdc_cases = ecdc_cases[order(country, date)]
+# ecdc_cases = as.data.table(covidregionaldata::get_national_data());
+# ecdc_cases = ecdc_cases[order(country, date)]
+# ecdc_cases = ecdc_cases[!is.na(country)]
+## fwrite(ecdc_cases, "./data/cached_case_data.csv")
+ecdc_cases = fread("./data/cached_case_data.csv")
 
 # Population distributions
 wp_reg = qread("./data/worldpop5yr.qs");
@@ -92,13 +95,15 @@ wp_reg[, tot_pop := rowSums(.SD), .SDcols = f_0:m_80] # Calculate total populati
 wp_reg = wp_reg[!is.na(lon) & !is.na(lat)]; # Restrict to regions with a lon and lat; this removes places with 0 population as well.
 countries = wp_reg[parent == "", key];
 names(countries) = wp_reg[parent == "", name];
+#country_codes = countries;
+#names(country_codes) = countrycode(names(countries), origin = "country.name", destination = "iso2c");
+#saveRDS(country_codes, "./data/country_codes.rds");
+country_codes = readRDS("./data/country_codes.rds");
 
 # Matrix lookup
-matrices = names(cm_matrices)
-kvz_matrix_lookup = readRDS("./data/lookup_table_contactmatrix.rds");
-matrix_lookup = data.table(country = unique(wp_reg$country));
-matrix_lookup = merge(matrix_lookup, kvz_matrix_lookup[, .(country = country_code_iso_alpha3, matrix = matrix_name)], all.x = T)
-matrix_lookup[is.na(matrix), matrix := "Finland"]
+matrix_lookup = fread("./data/matrix_lookup.csv");
+matrix_lookup = matrix_lookup[, .(country = iso3c, matrix)];
+matrices = names(cm_matrices)[9:160];#matrix_lookup[, matrix]
 
 # Susceptibility and clinical fraction
 covuy = qread("./data/covuy.qs")
@@ -256,25 +261,69 @@ shdrop = list(
     )
 )
 
+# IP geolocation
+ip_file = system.file("extdata", "ip2_sample.bin", package = "rgeolocate");
 
-# # EXAMPLE IP ADDRESS
-# library(shiny)
-# 
-# ui <- function(req) {
-#   fluidPage(
-#     div(style = "display: none;",
-#       textInput("remote_addr", "remote_addr",
-#         paste0("(", req[["HTTP_X_FORWARDED_FOR"]], "|", req[["REMOTE_ADDR"]], ")")
-#       )
-#     ),
-#     textOutput("ip")
-#   )
-# }
-# 
-# server <- function(input, output, session) {
-#   output$ip = renderText(paste0("The remote IP is ", isolate(input$remote_addr)));
-# }
-# 
-# shinyApp(ui, server)
+# Help
+help_bubbles = list(
+    # Display panels
+    tab_cases         = c("Cases", "bottom", "The incidence of individuals developing clinical symptoms each day."),
+    tab_hospital      = c("Hospital", "bottom", "The number of ICU and non-ICU (i.e. general ward) beds required for treating COVID-19 patients over time."),
+    tab_deaths        = c("Deaths", "bottom", "The incidence of deaths from COVID-19 each day."),
+    tab_transmission  = c("Transmission", "bottom", "The basic reproductive number R\u2080 and effective reproductive number R\u2091 over time."),
+    tab_dynamics      = c("Dynamics", "bottom", "The number of individuals in each model compartment over time."),
+    compare           = c("Compare", "bottom", "Show the dynamics of an unmitigated epidemic (i.e., with no interventions) for comparison."),
+    
+    # Control panels
+    reset             = c("Reset tab", "bottom", "Reset the current tab to its default settings."),
+    
+    #tab_location      = c("Location", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    loc_reg_column    = c("Country", "top", "Use demographic data from WorldPop.org and GADM.org to set the population size and age distribution for the modelled population."),
+    loc_pyramid       = c("Population pyramid", "top", "Dynamics of SARS-CoV-2 transmission vary strongly by age, and accordingly the age distribution of the population can have a substantial impact upon model outputs."),
 
+    #tab_contact       = c("Contact", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    con_matrix        = c("Contact matrix", "top", "Use either the default contact matrix"),
+    con_plots         = c("Contact plots", "top", "These plots show the number of contacts each individual makes per day, on average, with other individuals of specific age groups, broken down by where the contacts occur. Brighter colours correspond to more contacts made."),
 
+    #tab_epidemic      = c("Epidemic", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    epi_seed_date     = c("Epidemic start date", "top", "The day upon which the first individuals are infected with SARS-CoV-2."),
+    epi_sim_time      = c("Simulate for", "top", "Number of years to simulate the epidemic for."),
+    epi_seed_size     = c("Starting number of infections", "top", "Number of individuals infected with SARS-CoV-2 on the first day of the epidemic."),
+    epi_R0            = c("Basic reproduction number, R\u2080", "top", "The basic reproduction number is the average number of people an infectious person transmits infection to in a fully susceptible population."),
+    epi_immune        = c("Proportion immune at start", "top", "The proportion of the population that is immune to infection. People with immunity don't get sick, but they also don't transmit the virus to others. If the proportion immune exceeds the herd immunity threshold, the epidemic will not spread at all."),
+    epi_rho           = c("Case ascertainment rate", "top", "The proportion of clinical cases that are captured by surveillance. The number of cases reported typically underestimates the true number of cases, because individuals may not seek care, not be counted among the sick, or not be diagnosed correctly."),
+    epi_season_column = c("Seasonality", "top", "Many infectious diseases exhibit patterns of seasonal transmission. Respiratory viruses tend to transmit more efficiently in the winter and less efficiently in the summer. These controls allow you to specify the week of the year in which transmission peaks, and the amplitude (strength) of seasonality. An amplitude of 0 means no seasonal variation in transmission."),
+
+    #tab_virus         = c("Virus", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    vir_uy_column     = c("Susceptibility and clinical fraction", "top", "Susceptibility to infection is the relative propensity an individual of a given age has for getting infected given contact with an infectious person. The clinical fraction is the proportion of infections resulting in clinical symptoms, depending on an individual's age."),
+    vir_d_column      = c("Durations", "top", "The latent period is the average time between infection and the onset of infectiousness; the preclinical period is the average amount of time between the onset of infectiousness and the onset of symptoms; the clinical period is the average amount of time that a symptomatic individual remains infectious; and the subclinical period is the average amount of time that a subclinically-infected person is infectious."),
+    imm_wn            = c("Natural immunity waning rate", "top", "The average rate, per year, at which natural immunity to SARS-CoV-2 wanes."),
+    model_diagram     = c("Model diagram", "top", "Diagram showing transitions between states of infection in the model."),
+
+    #tab_interventions = c("Interventions", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    add_school_closure         = c("School closure", "top", "Reduce school contacts by a specified amount."),
+    add_social_distancing      = c("Social distancing", "top", "Reduce work and other contacts by a specified amount."),
+    add_elderly_shielding_part = c("Elderly shielding (stay-at-home)", "top", "Reduce non-home contacts by a specified amount, only for the elderly."),
+    add_elderly_shielding_full = c("Elderly shielding (full shielding)", "top", "Reduce all contacts by a specified amount, only for the elderly."),
+    add_self_isolation         = c("Self-isolation", "top", "Reduce infectiousness of individuals with clinical symptoms by a specified amount."),
+    add_lockdown               = c("Lockdown", "top", "Reduce non-home contacts by a specified amount, for all individuals."),
+    add_vaccine                = c("Vaccine", "top", "Add a vaccination campaign."),
+    int_elderly       = c("Age threshold for elderly shielding", "top", "Individuals this age and above are considered elderly for the purposes of elderly shielding."),
+    imm_ev            = c("Vaccine effectiveness", "top", "The proportion of individuals receiving a vaccine who develop effective protection against infection."),
+    imm_wv            = c("Vaccine protection waning rate", "top", "The average rate, per year, at which vaccine protection against SARS-CoV-2 wanes."),
+
+    #tab_health        = c("Health", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    hea_burdens       = c("Health burdens", "top", "The hospitalisation probability is the probability that an individual with clinical symptoms requires hospitalisation. The ICU probability is the probability that an individual who requires hospitalisation requires ICU treatment. The case fatality ratio (CFR) is the probability that an individual with clinical symptoms dies from COVID-19."),
+    hea_durations     = c("Durations", "top", "The basic reproduction number is xxx yyy zzz..."),
+    hea_capacity      = c("Bed capacity", "top", "Set these capacity figures to compare general ward and ICU bed requirements to available spaces."),
+
+    #tab_data          = c("Data", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    dat_points        = c("Data", "top", "Enter daily cases and deaths here to compare model output to observed data."),
+    dat_show_column   = c("Show data on main display", "top", "Show cases and deaths data on the main plots above. Note that reported cases are often a substantial underestimate of the true number of cases, and it may be necessary to adjust the case ascertainment rate (Epidemic tab) to align model output with reported case data."),
+    dat_import_column = c("Import", "top", "Import data from the European Centre for Disease Prevention and Control (ECDC) on the daily number of new COVID-19 cases and deaths for a given country."),
+
+    #tab_saveload      = c("Save / Load", "bottom", "The basic reproduction number is xxx yyy zzz..."),
+    sav_download      = c("Download epidemic data", "top", "Download a CSV file giving the dynamics of the epidemic over time.")
+
+    #tab_about         = c("About", "bottom", "The basic reproduction number is xxx yyy zzz...")
+)

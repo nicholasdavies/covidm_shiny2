@@ -3,7 +3,11 @@
 
 build/
 
+local/
+
 .DS_Store
+
+.cache
 
 covidm/.Rhistory
 

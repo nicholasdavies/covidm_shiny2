@@ -5,8 +5,9 @@ account: ngdavies
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 2354515
-bundleId: 3257685
+bundleId: 3474008
 url: https://ngdavies.shinyapps.io/covidm_shiny2/
-when: 1591890351.20425
+when: 1596555164.87222
 asMultiple: FALSE
 asStatic: FALSE
+ignoredFiles: colour_palette.svg|makecontact_shiny2.R|wb_income.RDS|.cache/0ef607606cc4664c|.cache/1ac52fd5ef9725f8

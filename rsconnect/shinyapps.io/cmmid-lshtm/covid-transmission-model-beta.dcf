@@ -1,0 +1,13 @@
+name: covid-transmission-model-beta
+title: covid-transmission-model-beta
+username:
+account: cmmid-lshtm
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2640706
+bundleId: 4167588
+url: https://cmmid-lshtm.shinyapps.io/covid-transmission-model-beta/
+when: 1612195466.22168
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: colour_palette.svg|makecontact_shiny2.R|wb_income.RDS|.cache/83a274b4295ccecb

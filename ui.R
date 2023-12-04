@@ -2,6 +2,7 @@
 
 source("./load.R")
 
+ui = function(req) {
 fluidPage(theme = shinytheme("sandstone"),
     useShinyjs(),
     
@@ -43,6 +44,9 @@ fluidPage(theme = shinytheme("sandstone"),
         tags$style(".dropdown-menu { opacity: 0.75 }")
     ),
     chooseSliderSkin("Square"),
+
+    # Hidden element for client IP    
+    div(style = "display: none;", textInput("remote_addr", "remote_addr", paste0("(", req[["HTTP_X_FORWARDED_FOR"]], "|", req[["REMOTE_ADDR"]], ")"))),
     
     h3(id = "title", style = "text-align: center", "CMMID COVID-19 transmission app"),
     h4(style = "text-align: center", "Beta testing version: This app is still under development"),
@@ -93,17 +97,25 @@ fluidPage(theme = shinytheme("sandstone"),
     
     # ---------- CONTROL PANEL ----------
     
-    div(id = "control", style = "max-width: 980px; min-width: 980px; margin: 0 auto !important; float: none !important; padding: 10px; border-radius: 0px 0px 10px 10px; border-width: 0px 1px 1px 1px; border-color: #dddddd; border-style: solid",
+    div(id = "control", style = "max-width: 980px; min-width: 980px; margin: 0 auto !important; float: none !important; padding: 10px; border-radius: 0px 0px 10px 10px; border-width: 0px 1px 1px 1px; border-color: #dddddd; border-style: solid; position:relative",
+
+        # Reset
+        div(id = "reset_loc", style = "position: absolute; right: 8px; top: 52px",
+            actionLink("reset", label = HTML("RESET TAB"), icon = icon("undo"), style = "color: #98978b; font-size: 9pt")
+        ),
+
         tabsetPanel(id = "control_tabs",
             # Location controls
             tabPanel(value = "location", title = iconTab("tab_location", "Location", "globe-africa"),
                 tags$br(),
                 fluidRow(
                     column(4, 
-                        fluidRow(column(3, h6("Country", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg0", label = NULL, choices = countries))),
-                        fluidRow(column(3, h6("Admin 1", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg1", label = NULL, choices = ""))),
-                        fluidRow(column(3, h6("Admin 2", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg2", label = NULL, choices = ""))),
-                        fluidRow(column(3, h6("Admin 3", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg3", label = NULL, choices = "")))
+                        div(id = "loc_reg_column",
+                            fluidRow(column(3, h6("Country", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg0", label = NULL, choices = countries))),
+                            fluidRow(column(3, h6("Admin 1", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg1", label = NULL, choices = ""))),
+                            fluidRow(column(3, h6("Admin 2", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg2", label = NULL, choices = ""))),
+                            fluidRow(column(3, h6("Admin 3", style="padding-top: 2px; text-align: right")), column(9, selectInput("loc_reg3", label = NULL, choices = "")))
+                        )
                     ),
                     column(4,
                         leafletOutput("loc_map", width = "100%", height = "300px")
@@ -118,7 +130,7 @@ fluidPage(theme = shinytheme("sandstone"),
             tabPanel(value = "contact", title = iconTab("tab_contact", "Contact", "people-arrows"),
                 tags$br(),
                 fluidRow(
-                    column(12,
+                    column(6,
                         radioButtons("con_matrix", label = "Contact matrix", width = "100%", choiceValues = list("default", "custom"),
                             choiceNames = list(
                                 span(id = "con_default_label", "Use default matrix"),
@@ -126,13 +138,18 @@ fluidPage(theme = shinytheme("sandstone"),
                             )
                         ),
                         disabled(selectInput("con_custom", label = NULL, choices = matrices))
+                    ),
+                    column(6,
+                        tags$br(),
                     )
                 ),
                 fluidRow(
-                    column(3, imageOutput("con_home", width = 230, height = 230)),
-                    column(3, imageOutput("con_work", width = 230, height = 230)),
-                    column(3, imageOutput("con_school", width = 230, height = 230)),
-                    column(3, imageOutput("con_other", width = 230, height = 230))
+                    div(id = "con_plots",
+                        column(3, imageOutput("con_home", width = 230, height = 230)),
+                        column(3, imageOutput("con_work", width = 230, height = 230)),
+                        column(3, imageOutput("con_school", width = 230, height = 230)),
+                        column(3, imageOutput("con_other", width = 230, height = 230))
+                    )
                 )
             ),
             
@@ -151,9 +168,11 @@ fluidPage(theme = shinytheme("sandstone"),
                         customSlider("epi_rho", "Case ascertainment rate", min = 0.01, max = 1, value = 1, step = 0.01)
                     ),
                     column(4,
-                        customSlider("epi_season_phase", "Seasonality: peak week", min = 1, max = 52, value = 1, step = 1),
-                        customSlider("epi_season_amp", "Seasonality: amplitude", min = 0.0, max = 1.0, value = 0, step = 0.01),
-                        imageOutput("epi_season_plot", width = 300, height = 75)
+                        div(id = "epi_season_column",
+                            customSlider("epi_season_phase", "Seasonality: peak week", min = 1, max = 52, value = 1, step = 1),
+                            customSlider("epi_season_amp", "Seasonality: amplitude", min = 0.0, max = 1.0, value = 0, step = 0.01),
+                            imageOutput("epi_season_plot", width = 300, height = 75)
+                        ),
                     )
                 )
             ),
@@ -163,14 +182,18 @@ fluidPage(theme = shinytheme("sandstone"),
                 tags$br(),
                 fluidRow(
                     column(4,
-                        selectInput("vir_uy", label = "Susceptibility and clinical fraction", choices = "Age-varying"),
-                        imageOutput("vir_uy_plot", width = 300, height = 300)
+                        div(id = "vir_uy_column",
+                            selectInput("vir_uy", label = "Susceptibility and clinical fraction", choices = "Age-varying"),
+                            imageOutput("vir_uy_plot", width = 300, height = 300)
+                        )
                     ),
                     column(4,
-                        customSlider("vir_dE", "Latent period (days)", min = 0.1, max = 10, value = 3.0, step = 0.1),
-                        customSlider("vir_dP", "Preclinical period (days)", min = 0.1, max = 10, value = 2.1, step = 0.1),
-                        customSlider("vir_dC", "Clinical period (days)", min = 0.1, max = 10, value = 2.9, step = 0.1),
-                        customSlider("vir_dS", "Subclinical period (days)", min = 0.1, max = 10, value = 5.0, step = 0.1)
+                        div(id = "vir_d_column",
+                            customSlider("vir_dE", "Latent period (days)", min = 0.1, max = 10, value = 3.0, step = 0.1),
+                            customSlider("vir_dP", "Preclinical period (days)", min = 0.1, max = 10, value = 2.1, step = 0.1),
+                            customSlider("vir_dC", "Clinical period (days)", min = 0.1, max = 10, value = 2.9, step = 0.1),
+                            customSlider("vir_dS", "Subclinical period (days)", min = 0.1, max = 10, value = 5.0, step = 0.1)
+                        )
                     ),
                     column(4, 
                         customSlider("imm_wn", "Natural immunity waning rate (per year)", min = 0, max = 2, value = 0, step = 0.02),
@@ -217,12 +240,16 @@ fluidPage(theme = shinytheme("sandstone"),
                         imageOutput("hea_plot", width = 300, height = 420)
                     ),
                     column(4,
-                        customSlider("hea_hosp_delay",  "Symptom onset to hospitalisation, days", min = 0.1, max = 30, value = 9., step = 0.1),
-                        customSlider("hea_icu_los",     "Length of stay in ICU, days",            min = 0.1, max = 30, value = 10, step = 0.1),
-                        customSlider("hea_nonicu_los",  "Length of stay in general ward, days",   min = 0.1, max = 30, value = 8., step = 0.1),
-                        customSlider("hea_death_delay", "Symptom onset to death, days",           min = 0.1, max = 30, value = 18, step = 0.1),
-                        numericInput("hea_icu", "ICU bed capacity", value = 0, min = 0, step = 100),
-                        numericInput("hea_nonicu", "Non-ICU bed capacity", value = 0, min = 0, step = 100)
+                        div(id = "hea_durations",
+                            customSlider("hea_hosp_delay",  "Symptom onset to hospitalisation, days", min = 0.1, max = 30, value = 9., step = 0.1),
+                            customSlider("hea_icu_los",     "Length of stay in ICU, days",            min = 0.1, max = 30, value = 10, step = 0.1),
+                            customSlider("hea_nonicu_los",  "Length of stay in general ward, days",   min = 0.1, max = 30, value = 8., step = 0.1),
+                            customSlider("hea_death_delay", "Symptom onset to death, days",           min = 0.1, max = 30, value = 18, step = 0.1),
+                        ),
+                        div(id = "hea_capacity",
+                            numericInput("hea_icu", "ICU bed capacity", value = 0, min = 0, step = 100),
+                            numericInput("hea_nonicu", "Non-ICU bed capacity", value = 0, min = 0, step = 100)
+                        )
                     )
                 )
             ),
@@ -239,22 +266,35 @@ fluidPage(theme = shinytheme("sandstone"),
                         imageOutput("dat_plot", width = 300, height = 300)
                     ),
                     column(4,
-                        checkboxInput("dat_show", label = "Show data on main display", value = F),
-                        selectInput("dat_import_from", label = "Import ECDC case data from", choices = ecdc_cases[, unique(country)]),
-                        actionButton("dat_import", label = "Import", icon = icon("arrow-left"))
+                        div(id = "dat_show_column",
+                            checkboxInput("dat_show", label = "Show data on main display", value = F),
+                        ),
+                        div(id = "dat_import_column",
+                            selectInput("dat_import_from", label = "Import WHO case data from", choices = ecdc_cases[, unique(country)]),
+                            actionButton("dat_import", label = "Import", icon = icon("arrow-left"))
+                        )
                     )
                 )
             ),
 
             # Save / load controls
-            tabPanel(value = "saveload", title = iconTab("tab_saveload", "Save / Load", "save"),
+            tabPanel(value = "saveload", title = iconTab("tab_saveload", "Save", "save"), # "Save / Load"
                 tags$br(),
                 downloadButton("sav_download", label = "Download epidemic data")
             ),
             
             # About controls
             tabPanel(value = "about", title = iconTab("tab_about", "About", "ellipsis-h"),
-                h2("To do"))
+                tags$br(),
+                h3("LSHTM COVID-19 Transmission App (beta version 2)"),
+                p("Nicholas G. Davies, Paul S. Wikramaratna, Samuel Clifford, Adam J. Kucharski, Amy Gimma, Kevin van Zandvoort, Kiesha Prem, Yang Liu, Carl A. B. Pearson, ", a(href = "https://cmmid.github.io/groups/ncov-group.html", "the CMMID COVID-19 Working Group,"), "Petra Klepac, Mark Jit, W. John Edmunds, Rosalind M. Eggo"),
+                p("This is a beta testing version of the app. If you have any feedback for us, please ", a(href = "https://forms.gle/VERmNQXwSSfe3YCG8", "submit it here"), "."),
+                p("This app uses an age-structured mathematical model developed by researchers at the London School of Hygiene and Tropical Medicine that simulates SARS-CoV-2 transmission in a population. It assumes that people infected with SARS-CoV-2 can either develop clinical symptoms (clinical infections) or only develop mild or no symptoms (subclinical infections), in which case the infection goes unnoticed. Children are assumed to be less susceptible to infection, and less likely to show clinical symptoms, than adults. The model also estimates the ", a(href="https://www.eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.12.2000256", "number of deaths from COVID-19"), " as well as the number of hospital beds occupied. A full explanation of the model can be found in the paper ", a(href="https://cmmid.github.io/topics/covid19/age_hypotheses.html", "'Age-dependent effects in the transmission and control of COVID-19 epidemics'"), ". Results from this model are being used by public health experts and policymakers ", a(href="https://cmmid.github.io/topics/covid19/uk-scenario-modelling.html", "in the UK"), " and around the world."),
+                p("If you are interested in using the code behind these simulations, see ", a(href = "https://github.com/cmmid/covid-UK", "https://github.com/cmmid/covid-UK"), " for the code accompanying our UK COVID-19 modelling paper."),
+                p("To simulate transmission in each country, the model uses contact matrices from the paper ", a(href="https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005697", "'Projecting social contact matrices in 152 countries using contact surveys and demographic data'"), " as well as the ", a(href="https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0050074", "POLYMOD"), " study."),
+                p("This model has some limitations. It assumes that contact patterns and other human behaviours do not change during the epidemic, except as determined by any selected interventions. It simulates the entire country as a single population, rather than simulating separate epidemics in different parts of each country. And it only simulates a single model trajectory for each set of parameters, which means that it does not take uncertainty into account."),
+                p("This app is not suitable to use as medical advice or to assess your personal level of risk.")
+            )
         )
     ),
     
@@ -265,3 +305,4 @@ fluidPage(theme = shinytheme("sandstone"),
         tags$br()
     )
 )
+}

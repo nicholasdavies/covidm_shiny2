@@ -3,7 +3,20 @@
 function(input, output, session)
 {
     # ---------- SET UP ----------
-    session$userData$dat_import = 0;
+
+    # Health burdens and data points data.tables    
+    burdens_dt = reactiveVal();
+    burdens_dt(data.table(Hosp = reformat(probs[, Prop_symp_hospitalised]), ICU = reformat(probs[, Prop_hospitalised_critical]), CFR = reformat(probs[, Prop_noncritical_fatal])));
+    points_dt = reactiveVal();
+    points_dt(data.table(date = c(ymd("2020-05-01"), ymd("2020-05-02")), variable = c("cases", "deaths"), value = 1));
+
+    # Set location
+    user_ccode = ip2location(isolate(input$remote_addr), ip_file, c("country_code"))$country_code;
+    user_country = country_codes[which(user_ccode == names(country_codes))];
+    if (length(user_country) != 1) {
+        user_country = country_codes[which("GB" == names(country_codes))];
+    }
+    updateSelectInput(session, "loc_reg0", selected = user_country);
     
     jqui_resizable(jqui_draggable(ui = "#vv_1", options = list(axis = "x", containment = "#iv_bounds")), 
         options = list(maxHeight = 430, minHeight = 430, handles = "w, e", shiny = shsize, containment = "#iv_bounds"))
@@ -11,7 +24,6 @@ function(input, output, session)
         options = list(maxHeight = 430, minHeight = 430, handles = "w, e", shiny = shsize, containment = "#iv_bounds"))
     jqui_resizable(jqui_draggable(ui = "#vv_3", options = list(axis = "x", containment = "#iv_bounds")), 
         options = list(maxHeight = 430, minHeight = 430, handles = "w, e", shiny = shsize, containment = "#iv_bounds"))
-
     
     # Set intervention rectangles as horizontally draggable and resizable
     jqui_resizable(jqui_draggable(ui = "#iv_1", options = list(axis = "x", containment = "#iv_bounds")), 
@@ -159,6 +171,11 @@ function(input, output, session)
 
     # TODO tidy this up...
     parameters = reactive({
+        # # return default parameters if no input
+        # if (is.null(input$epi_seed_size)) {
+        #     return (cm_translate_parameters(cm_parameters_SEI3R("UK | UNITED KINGDOM")))
+        # }
+        
         params = cm_parameters_SEI3R("UK | UNITED KINGDOM", current_matrix(), deterministic = T, 
             date_start = input$epi_seed_date, date_end = input$epi_seed_date + as.numeric(input$epi_sim_time),
             dE  = cm_delay_gamma(input$vir_dE, 4.0, t_max = 15, t_step = 0.25)$p,
@@ -176,7 +193,7 @@ function(input, output, session)
         params$pop[[1]]$seed_times = rep(0, as.numeric(input$epi_seed_size));
         params = cm_split_matrices_ex_in(params, 1 + as.numeric(input$int_elderly) / 5);
         
-        burd = burdens();
+        burd = burdens_dt();
         params$processes = burden_processes;
         params$processes[[1]]$prob = matrix(c(burd$Hosp * burd$ICU, burd$Hosp * (1 - burd$ICU), 1 - burd$Hosp), nrow = 3, ncol = 16, byrow = T);
         params$processes[[4]]$prob = matrix(c(burd$CFR, 1 - burd$CFR), nrow = 2, ncol = 16, byrow = T);
@@ -293,7 +310,7 @@ function(input, output, session)
         deathsU = dynU[, sum(death_o)];
         deathsM = dynM[, sum(death_o)];
         
-        case_points = points()[variable == "cases"];
+        case_points = points_dt()[variable == "cases"];
         show_points = F;
         if (input$dat_show && nrow(case_points) > 0) {
             show_points = T;
@@ -302,9 +319,10 @@ function(input, output, session)
         embed_svg(vvplot(960, 480, 
             vvpanel(
                 if (input$compare) vvline(casesUt$date, casesUt$cases, style = "stroke:#afc6e9") else NULL, 
+                #-#vvribbon(casesMt$date, casesMt$cases * 0.8, casesMt$cases * 1.2, style = "fill:#0044aa40"),
                 vvline(casesMt$date, casesMt$cases, style = "stroke:#0044aa; stroke-width: 2px"),
                 if (show_points) vvpoint(case_points$date, case_points$value, rescale = F) else NULL,
-                vvlegend("line", 0.75, 0.95, c("#afc6e9", "#0044aa"), c("Cases (no interventions)", "Cases (with interventions)")),
+                vvlegend("line", 0.8, 0.95, "#0044aa", "Cases"),
                 ylab = "Cases"
             ),
 
@@ -318,7 +336,7 @@ function(input, output, session)
                 c(860, 320, 100, 160)
             )
         ));
-    });
+    }, deleteFile = TRUE);
 
     # Hospital view
     output$hospital_plot = renderImage({
@@ -346,8 +364,7 @@ function(input, output, session)
                 vvline(icuMt$date, icuMt$icu, style = "stroke:#0066ff; stroke-width: 2px"),
                 if (input$compare) vvline(nonicuUt$date, nonicuUt$nonicu, style = "stroke:#c6afe9") else NULL, 
                 vvline(nonicuMt$date, nonicuMt$nonicu, style = "stroke:#9955ff; stroke-width: 2px"),
-                vvlegend("line", 0.75, 0.95, c("#afc6e9", "#0066ff", "#c6afe9", "#9955ff"),
-                    c("ICU beds occupied (no interventions)", "ICU beds occupied (with interventions)", "Non-ICU beds occupied (no interventions)", "Non-ICU beds occupied (with interventions)")),
+                vvlegend("line", 0.8, 0.95, c("#0066ff", "#9955ff"), c("ICU beds required", "Non-ICU beds required")),
                 ylab = "Beds occupied"
             ),
             vvpanel(vvbar(c("Unmit.", "Mit."), c(casesU, casesM), c("fill:#afc6e9", "fill:#0044aa"), show = TRUE), ylab = "Cases"),
@@ -360,7 +377,7 @@ function(input, output, session)
                 c(860, 320, 100, 160)
             )
         ));
-    });
+    }, deleteFile = TRUE);
 
     # Deaths view
     output$deaths_plot = renderImage({
@@ -378,7 +395,7 @@ function(input, output, session)
         deathsU = dynU[, sum(death_o)];
         deathsM = dynM[, sum(death_o)];
         
-        death_points = points()[variable == "deaths"];
+        death_points = points_dt()[variable == "deaths"];
         show_points = F;
         if (input$dat_show && nrow(death_points) > 0) {
             show_points = T;
@@ -389,8 +406,7 @@ function(input, output, session)
                 if (input$compare) vvline(deathsUt$date, deathsUt$deaths, style = "stroke:#e9afaf") else NULL, 
                 vvline(deathsMt$date, deathsMt$deaths, style = "stroke:#c83737; stroke-width: 2px"),
                 if (show_points) vvpoint(death_points$date, death_points$value, rescale = F, style="fill:#bb0000") else NULL,
-                vvlegend("line", 0.75, 0.95, c("#e9afaf", "#c83737"),
-                    c("Deaths (no interventions)", "Deaths (with interventions)")),
+                vvlegend("line", 0.8, 0.95, "#c83737", "Deaths"),
                 ylab = "Deaths"
             ),
             vvpanel(vvbar(c("Unmit.", "Mit."), c(casesU, casesM), c("fill:#afc6e9", "fill:#0044aa"), show = TRUE), ylab = "Cases"),
@@ -403,7 +419,7 @@ function(input, output, session)
                 c(860, 320, 100, 160)
             )
         ));
-    });
+    }, deleteFile = TRUE);
 
     # Transmission view
     output$transmission_plot = renderImage({
@@ -427,7 +443,7 @@ function(input, output, session)
                 vvline(dynMt$date, dynMt$R0, style = "stroke:#00ceff; stroke-width: 2px"),
                 if (input$compare) vvline(dynUt$date, dynUt$Re, style = "stroke:#afc6e9") else NULL, 
                 vvline(dynMt$date, dynMt$Re, style = "stroke:#0044aa; stroke-width: 2px"),
-                vvlegend("line", 0.95, 0.95, c("#00ceff", "#0044aa"), c("R<tspan baseline-shift=\"sub\">0</tspan>", "R<tspan baseline-shift=\"sub\">e</tspan>")),
+                vvlegend("line", 0.8, 0.95, c("#00ceff", "#0044aa"), c("R<tspan baseline-shift=\"sub\">0</tspan>", "R<tspan baseline-shift=\"sub\">e</tspan>")),
                 ylab = "Reproduction number"
             ),
             vvpanel(vvbar(c("Unmit.", "Mit."), c(casesU, casesM), c("fill:#afc6e9", "fill:#0044aa"), show = TRUE), ylab = "Cases"),
@@ -440,7 +456,7 @@ function(input, output, session)
                 c(860, 320, 100, 160)
             )
         ));
-    });
+    }, deleteFile = TRUE);
 
     # Dynamics view
     output$dynamics_plot = renderImage({
@@ -469,7 +485,7 @@ function(input, output, session)
                 vvline(dynMt$date, dynMt$Is, style = "stroke:#ff6600; stroke-width: 2px"),
                 vvline(dynUt$date, dynUt$Ia, style = "stroke:#afe9af"), 
                 vvline(dynMt$date, dynMt$Ia, style = "stroke:#71c837; stroke-width: 2px"),
-                vvlegend("line", 0.95, 0.95, c("#0044aa", "#ffcc00", "#ff6600", "#71c837", "#00ceff"), c("E", "Ip", "Is", "Ia", "R")),
+                vvlegend("line", 0.8, 0.95, c("#0044aa", "#ffcc00", "#ff6600", "#71c837", "#00ceff"), c("E (Exposed)", "Ip (Preclinical)", "Ic (Clinical)", "Is (Subclinical)", "R (Recovered)")),
                 ylab = "Prevalence"
             ),
             vvpanel(vvbar(c("Unmit.", "Mit."), c(casesU, casesM), c("fill:#afc6e9", "fill:#0044aa"), show = TRUE), ylab = "Cases"),
@@ -482,7 +498,7 @@ function(input, output, session)
                 c(860, 320, 100, 160)
             )
         ));
-    });
+    }, deleteFile = TRUE);
 
     # ---------- CONTROL PANEL ----------
     
@@ -551,7 +567,7 @@ function(input, output, session)
                 vvtextann(c(0.15, 0.85), c(0.91, 0.91), c("Females", "Males")),
             xlab = "Population", xpositive = T)
         ))
-    })
+    }, deleteFile = TRUE)
     
     # CONTACT CONTROL PANEL
     observeEvent(input$con_matrix, {
@@ -578,10 +594,10 @@ function(input, output, session)
         }
     });
     
-    output$con_home   = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$home), xtick = 90, title = "Contacts at home", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) });
-    output$con_work   = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$work), xtick = 90, title = "Contacts at work", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) });
-    output$con_school = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$school), xtick = 90, title = "Contacts at school", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) });
-    output$con_other  = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$other), xtick = 90, title = "Other contacts", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) });
+    output$con_home   = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$home), xtick = 90, title = "Contacts at home", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) }, deleteFile = TRUE);
+    output$con_work   = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$work), xtick = 90, title = "Contacts at work", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) }, deleteFile = TRUE);
+    output$con_school = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$school), xtick = 90, title = "Contacts at school", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) }, deleteFile = TRUE);
+    output$con_other  = renderImage({ embed_svg(vvplot(230, 230, vvpanel(vvmatrix(cm_matrices[[current_matrix()]]$other), xtick = 90, title = "Other contacts", xlab = "Age of individual", ylab = "Age of contacts", margin = c(15, 15, 45, 45)))) }, deleteFile = TRUE);
     
     # EPIDEMIC CONTROL PANEL
     output$epi_season_plot = renderImage({
@@ -592,11 +608,12 @@ function(input, output, session)
             vvpanel(
                 vvline(wave$date, wave$amp),
                 vvlimits(NULL, c(0, 2)),
-                margin = c(10, 10, 20, 20),
-                xdateformat = "%b"
+                margin = c(10, 10, 20, 30),
+                xdateformat = "%b",
+                ylab = "Seasonality"
             )
         ))
-    });                
+    }, deleteFile = TRUE);                
     
     # INFECTION CONTROL PANEL
     output$vir_uy_plot = renderImage({
@@ -608,7 +625,7 @@ function(input, output, session)
                 xlab = "Age"
             )
         ))
-    });
+    }, deleteFile = TRUE);
     
     output$model_diagram = renderImage({
         list(src = normalizePath(file.path("./data", "fig-model.png")),
@@ -650,7 +667,7 @@ function(input, output, session)
                     iv$w[available]        = 56 * 810 / (ax_t1 - ax_t0);
                     iv$x[available]        = max(0, min(810 - iv$w[available], input$display_notify$x - 55));
                     update_iv_t(available);
-    
+
                     updateSelectInput(session, inputId = paste0("int_type_", available), label = NULL, choices = intervention_types, selected = iv_type_i);
                     updateSliderInput(session, inputId = paste0("int_strength_", available), label = iv_def[[iv_type_i]]$strength_name, value = iv_def[[iv_type_i]]$strength_default);
                     html(paste0("iv_title_", available), nbsp(iv_def[[iv_type_i]]$name));
@@ -675,23 +692,12 @@ function(input, output, session)
     observeEvent(input$vax_remove_3, { vv$active[3] = F; setcss("vv_3", display = "none"); toggleDropdownButton("vax_menu_3"); });
 
     # HEALTH CONTROL PANEL
-    burden_values = reactiveValues();
-    burdens = reactive({
-        if (!is.null(input$hea_burdens)) {
-            dt = hot_to_r(input$hea_burdens)
-        } else {
-            if (is.null(burden_values[["dt"]])) {
-                dt = data.table(Hosp = reformat(probs[, Prop_symp_hospitalised]), ICU = reformat(probs[, Prop_hospitalised_critical]), CFR = reformat(probs[, Prop_noncritical_fatal]));
-            } else {
-                dt = burden_values[["dt"]];
-            }
-        }
-        burden_values[["dt"]] = dt;
-        return (dt)
-    })
+    observeEvent(input$hea_burdens, {
+        burdens_dt(hot_to_r(input$hea_burdens));
+    });
 
     output$hea_burdens = renderRHandsontable({
-        dt = burdens();
+        dt = burdens_dt();
         if (!is.null(dt)) {
             rhandsontable(dt, rowHeaders = c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), useTypes = TRUE, stretchH = "all") %>%
                 hot_context_menu(allowRowEdit = FALSE, allowColEdit = FALSE) %>%
@@ -700,41 +706,28 @@ function(input, output, session)
     })
     
     output$hea_plot = renderImage({ 
+        dt = burdens_dt();
         embed_svg(vvplot(300, 420, ncol = 1, nrow = 2, 
             vvpanel(
-                vvbar(c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), burdens()[, Hosp], style = "fill: #0066ff"), 
-                vvbar(c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), burdens()[, Hosp * ICU], style = "fill: #9955ff"),
+                vvbar(c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), dt[, Hosp], style = "fill: #0066ff"), 
+                vvbar(c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), dt[, Hosp * ICU], style = "fill: #9955ff"),
                 vvlegend("rect", 0.1, 0.95, c("#0066ff", "#9955ff"), c("Severe", "Critical")),
                 xtick = 45, ylab = "Hospitalisation"),
-            vvpanel(vvbar(c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), burdens()[, CFR], style = "fill: c83737"), 
+            vvpanel(vvbar(c(paste0(seq(0, 70, by = 5), "-", seq(4, 74, by = 5)), "75+"), dt[, CFR], style = "fill: c83737"), 
                 xtick = 45, ylab = "Case fatality ratio")
         ))
-    });
+    }, deleteFile = TRUE);
 
     # icu = reactive(input$hea_icu);
     # observe({ print(debounce(icu, 1000)()); });
     
     # DATA CONTROL PANEL
-    points_values = reactiveValues();
-    points = reactive({
-        if (input$dat_import > session$userData$dat_import) {
-            session$userData$dat_import = input$dat_import;
-            dt = points_values[["dt"]];
-        } else if (!is.null(input$dat_points)) {
-            dt = hot_to_r(input$dat_points)
-        } else {
-            if (is.null(points_values[["dt"]])) {
-                dt = data.table(date = ymd("2020-05-01"), variable = "cases", value = 5);
-            } else {
-                dt = points_values[["dt"]];
-            }
-        }
-        points_values[["dt"]] = dt;
-        return (dt)
+    observeEvent(input$dat_points, {
+        points_dt(hot_to_r(input$dat_points));
     });
 
     output$dat_points = renderRHandsontable({
-        dt = points();
+        dt = points_dt();
         if (!is.null(dt)) {
             rhandsontable(dt, useTypes = TRUE, stretchH = "all", height = 300) %>%
                 hot_context_menu(allowRowEdit = TRUE, allowColEdit = FALSE) %>%
@@ -743,21 +736,21 @@ function(input, output, session)
     });
 
     output$dat_plot = renderImage({
-        cases = points()[variable == "cases"];
-        deaths = points()[variable == "deaths"];
+        cases = points_dt()[variable == "cases"];
+        deaths = points_dt()[variable == "deaths"];
         
         embed_svg(vvplot(300, 300, vvpanel(
             if (nrow(cases) > 0) vvpoint(cases[, date], cases[, value], style = "fill:#000000") else NULL,
             if (nrow(deaths) > 0) vvpoint(deaths[, date], deaths[, value], style = "fill:#bb0000") else NULL,
             vvlegend("point", 0.1, 0.9, c("#000000", "#bb0000"), c("Cases", "Deaths")),
             xtick = 45, margin = c(10, 10, 50, 40), ylab = "Data"))) 
-    });
+    }, deleteFile = TRUE);
     
     observeEvent(input$dat_import, {
         cases = ecdc_cases[country == input$dat_import_from];
-        points_values[["dt"]] = rbind(
-            cases[, .(date, variable = "cases", value = cases)],
-            cases[, .(date, variable = "deaths", value = deaths)]);
+        points_dt(rbind(
+            cases[, .(date, variable = "cases", value = cases_new)],
+            cases[, .(date, variable = "deaths", value = deaths_new)]));
     });
 
     # SAVE / LOAD CONTROL PANEL
@@ -775,33 +768,71 @@ function(input, output, session)
             fwrite(data, con)
         }
     );
+    
+    # RESET TAB
+    observeEvent(input$reset, {
+        if (input$control_tabs == "location") {
+            updateSelectInput(session, "loc_reg0", selected = user_country);
+        } else if (input$control_tabs == "contact") {
+            updateRadioButtons(session, "con_matrix", selected = "default");
+            disable("con_custom");
+        } else if (input$control_tabs == "epidemic") {
+            updateDateInput(session, "epi_seed_date", value = "2020-01-01");
+            updateSelectInput(session, "epi_sim_time", selected = 365);
+            updateSliderInput(session, "epi_seed_size", value = 10);
+            updateSliderInput(session, "epi_R0", value = 2.4);
+            updateSliderInput(session, "epi_immune", value = 0);
+            updateSliderInput(session, "epi_rho", value = 1);
+            updateSliderInput(session, "epi_season_phase", value = 1);
+            updateSliderInput(session, "epi_season_amp", value = 0);
+        } else if (input$control_tabs == "virus") {
+            updateSelectInput(session, "vir_uy", selected = 1);
+            updateSliderInput(session, "vir_dE", value = 3.0);
+            updateSliderInput(session, "vir_dP", value = 2.1);
+            updateSliderInput(session, "vir_dC", value = 2.9);
+            updateSliderInput(session, "vir_dS", value = 5.0);
+            updateSliderInput(session, "imm_wn", value = 0);
+        } else if (input$control_tabs == "interventions") {
+            iv$active[1] = F; setcss("iv_1", display = "none");
+            iv$active[2] = F; setcss("iv_2", display = "none");
+            iv$active[3] = F; setcss("iv_3", display = "none");
+            iv$active[4] = F; setcss("iv_4", display = "none");
+            iv$active[5] = F; setcss("iv_5", display = "none");
+            iv$active[6] = F; setcss("iv_6", display = "none");
+            iv$active[7] = F; setcss("iv_7", display = "none");
+            iv$active[8] = F; setcss("iv_8", display = "none");
+            vv$active[1] = F; setcss("vv_1", display = "none");
+            vv$active[2] = F; setcss("vv_2", display = "none");
+            vv$active[3] = F; setcss("vv_3", display = "none");
+            updateSliderInput(session, "int_elderly", value = 70);
+            updateSliderInput(session, "imm_ev", value = 0.8);
+            updateSliderInput(session, "imm_wv", value = 0);
+        } else if (input$control_tabs == "health") {
+            burdens_dt(data.table(Hosp = reformat(probs[, Prop_symp_hospitalised]), ICU = reformat(probs[, Prop_hospitalised_critical]), CFR = reformat(probs[, Prop_noncritical_fatal])));
+            updateSliderInput(session, "hea_hosp_delay",  value = 9.);
+            updateSliderInput(session, "hea_icu_los",     value = 10);
+            updateSliderInput(session, "hea_nonicu_los",  value = 8.);
+            updateSliderInput(session, "hea_death_delay", value = 18);
+            updateNumericInput(session, "hea_icu", value = 0);
+            updateNumericInput(session, "hea_nonicu", value = 0);
+        } else if (input$control_tabs == "data") {
+            points_dt(data.table(date = c(ymd("2020-05-01"), ymd("2020-05-02")), variable = c("cases", "deaths"), value = 1));
+            updateCheckboxInput(session, "dat_show", value = F);
+            updateSelectInput(session, "dat_import_from", selected = "Afghanistan");
+        }
+    });
 
     # HELP TOOLTIPS
     observe({
         if (input$help_tooltips) {
-            addPopover(session, "tab_cases", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_burdens", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_dynamics", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_location", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_contact", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_virus", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_interventions", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_health", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "tab_saveload", "TEST", "The basic reproduction number is xxx yyy zzz...", placement = "bottom", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "con_home", "Home contacts", "This plot shows the number of contacts each individual makes at home per day, on average.", placement = "top", trigger = "hover", options = list(container = "body"));
-            addPopover(session, "epi_R0", "Basic reproduction number", "The basic reproduction number is xxx yyy zzz...", placement = "top", trigger = "hover", options = list(container = "body"));
+            for (h in seq_along(help_bubbles)) {
+                addPopover(session, names(help_bubbles)[h], help_bubbles[[h]][1], help_bubbles[[h]][3], 
+                    placement = help_bubbles[[h]][2], trigger = "hover", options = list(container = "body"));
+            }
         } else {
-            removePopover(session, "tab_cases");
-            removePopover(session, "tab_burdens");
-            removePopover(session, "tab_dynamics");
-            removePopover(session, "tab_location");
-            removePopover(session, "tab_contact");
-            removePopover(session, "tab_virus");
-            removePopover(session, "tab_interventions");
-            removePopover(session, "tab_health");
-            removePopover(session, "tab_saveload");
-            removePopover(session, "con_home");
-            removePopover(session, "epi_R0");
+            for (h in seq_along(help_bubbles)) {
+                removePopover(session, names(help_bubbles)[h]);
+            }
         }
     });
 }

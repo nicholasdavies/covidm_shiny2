@@ -1,0 +1,13 @@
+name: covidm_shiny2
+title: covidm_shiny2
+username:
+account: cmmid-lshtm
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2608280
+bundleId: 3474154
+url: https://cmmid-lshtm.shinyapps.io/covidm_shiny2/
+when: 1596557296.27603
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: colour_palette.svg|makecontact_shiny2.R|wb_income.RDS|.cache/0ef607606cc4664c|.cache/1ac52fd5ef9725f8
